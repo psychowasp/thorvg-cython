@@ -53,7 +53,7 @@ test-sources = ["tests"]
 test-command = ""
 
 [tool.cibuildwheel.android]
-before-all = "python3 {project}/tools/build_thorvg.py android --thorvg-root={project}/thorvg --version=$THORVG_VERSION"
+before-all = "python3 {project}/tools/build_thorvg.py android --thorvg-root={project}/thorvg --version=$THORVG_VERSION --api=24"
 # The host app (Gradle project) bundles libc++_shared.so at runtime.
 # Default repair handles it fine; tests/preload.py pre-loads libthorvg
 # via ctypes to work around Android's classloader-namespace.

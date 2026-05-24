@@ -465,13 +465,12 @@ elif _is_android_build():
     print(f"[setup.py] Android arch={_android_arch}, _host_plat={_host_plat!r}, lib_dir={_lib_dir}")
 
     if _android_so.exists():
-        _bundle_dylib(_android_so, _PKG_SRC)
+        # Do NOT copy into the package dir — libthorvg-1.so is injected into
+        # .libs/{abi}/ in the wheel by tools/add_android_libs.py (repair step).
+        # Gradle picks it up from .libs/{abi}/ and places it in the APK's
+        # lib/{abi}/, where Android's linker resolves it at runtime.
         library_dirs.append(str(_lib_dir))
         libraries.append("thorvg-1")
-        # --disable-new-dtags forces DT_RPATH instead of DT_RUNPATH.
-        # Android's Bionic linker respects DT_RPATH but ignores
-        # DT_RUNPATH with $ORIGIN in app namespaces.
-        extra_link_args.extend(["-Wl,-rpath,$ORIGIN", "-Wl,--disable-new-dtags"])
     else:
         library_dirs.append(str(_lib_dir))
         libraries.append("thorvg")
@@ -510,9 +509,12 @@ else:
         libraries.append("thorvg")
         extra_link_args.append(f"-Wl,-rpath,{THORVG_LIB_DIR}")
 
-# C++ standard library (macOS/iOS use libc++, Linux links libstdc++ automatically)
+# C++ standard library linking
 if sys.platform in ("darwin", "ios"):
     extra_link_args.append("-lc++")
+elif _is_android_build():
+    # Statically link libc++ so extensions don't have DT_NEEDED: libc++_shared.so
+    extra_link_args.append("-static-libstdc++")
 
 # ---------------------------------------------------------------------------
 #  Extension definition — all extensions share the same link kwargs
