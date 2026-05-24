@@ -54,15 +54,13 @@ test-command = ""
 
 [tool.cibuildwheel.android]
 before-all = "python3 {project}/tools/build_thorvg.py android --thorvg-root={project}/thorvg --version=$THORVG_VERSION --api=24"
-# The host app (Gradle project) bundles libc++_shared.so at runtime.
-# Default repair handles it fine; tests/preload.py pre-loads libthorvg
-# via ctypes to work around Android's classloader-namespace.
-#repair-wheel-command = "cp {wheel} {dest_dir}/"
+# Inject libthorvg-1.so into .libs/{abi}/ so preload.py can find it at test
+# time and Gradle can pick it up for the APK at deploy time.
+repair-wheel-command = "cp {wheel} {dest_dir}/ && THORVG_LIB_DIR={project}/thorvg/output python3 {project}/tools/add_android_libs.py {dest_dir}"
 environment = { THORVG_ROOT = "thorvg", THORVG_VERSION = "1.0.5", THORVG_LIB_DIR = "thorvg/output", ANDROID_API_LEVEL = "24" }
 test-sources = ["tests"]
-# libthorvg-1.so is in .libs/{abi}/ in the wheel (added by add_android_libs.py).
-# preload.py finds it at site-packages/.libs/{abi}/libthorvg-1.so and loads it
-# via ctypes before any Cython extension import.
+# preload.py loads libthorvg-1.so from site-packages/.libs/{abi}/ before
+# importing any Cython extension (Android classloader-namespace workaround).
 test-command = "python -m pytest ./tests -v"
 
 [dependency-groups]
