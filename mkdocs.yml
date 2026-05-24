@@ -1,0 +1,81 @@
+site_name: thorvg-cython
+site_description: High-performance Cython bindings for the ThorVG vector graphics library
+site_url: https://py-swift.github.io/thorvg-cython/
+repo_url: https://github.com/Py-Swift/thorvg-cython
+repo_name: Py-Swift/thorvg-cython
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - content.code.copy
+    - content.code.annotate
+    - search.highlight
+    - search.suggest
+  icon:
+    repo: fontawesome/brands/github
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.snippets
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/installation.md
+      - Quick Start: getting-started/quickstart.md
+  - API Reference:
+      - Overview: api/overview.md
+      - Engine: api/engine.md
+      - Canvas: api/canvas.md
+      - Paint: api/paint.md
+      - Shape: api/shape.md
+      - Picture: api/picture.md
+      - Scene: api/scene.md
+      - Text: api/text.md
+      - Gradients: api/gradients.md
+      - Animation: api/animation.md
+      - Utilities: api/utilities.md
+  - Guides:
+      - GPU Rendering: guides/gpu-rendering.md
+      - Kivy Integration: guides/kivy-integration.md
+      - Buffer Protocol: guides/buffer-protocol.md
+      - Game Development: guides/game-development.md
+  - Examples:
+      - Basic Shapes: examples/basic-shapes.md
+      - SVG Rendering: examples/svg-rendering.md
+      - Lottie Animations: examples/lottie-animations.md
+      - GPU Games: examples/gpu-games.md
