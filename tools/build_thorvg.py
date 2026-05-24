@@ -24,7 +24,7 @@ GPU support (optional)
     --gpu=metal     Metal           (macos, ios) — not yet implemented
 
     If omitted, reads THORVG_GPU env var.  When neither is set the
-    library is built with the software renderer only (-Dengines=sw).
+    library is built with the CPU renderer only (-Dengines=cpu).
 
 Environment variable overrides
     THORVG_GPU          Default GPU backend (same values as --gpu)
@@ -232,7 +232,7 @@ def _meson_common(platform: str, gpu: str, *,
     extras = ["lottie_exp", "openmp"]
 
     if gpu:
-        args.append("-Dengines=sw,gl")
+        args.append("-Dengines=cpu,gl")
         # OpenGL ES extra is needed for gles / angle backends
         if gpu in ("gles", "angle"):
             extras.append("opengl_es")
@@ -240,7 +240,7 @@ def _meson_common(platform: str, gpu: str, *,
         if native and platform == "linux":
             args.append("-Dcpp_link_args=-ldl")
     else:
-        args.append("-Dengines=sw")
+        args.append("-Dengines=cpu")
 
     args.append(f"-Dextra={','.join(extras)}")
     return args
