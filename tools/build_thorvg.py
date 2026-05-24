@@ -225,7 +225,7 @@ def _meson_common(platform: str, gpu: str, *,
         "--default-library=shared",
         "-Dthreads=true",
         "-Dbindings=capi",
-        "-Dloaders=svg,lottie,ttf",
+        "-Dloaders=svg,lottie,ttf,png,jpg",
     ]
 
     # Engine + extra flags depend on GPU mode
