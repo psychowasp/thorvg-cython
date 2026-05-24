@@ -40,3 +40,6 @@ wheelhouse/
 thorvg
 uv.lock
 
+# MkDocs
+site/
+
