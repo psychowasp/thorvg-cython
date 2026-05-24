@@ -6,23 +6,28 @@ repo_name: Py-Swift/thorvg-cython
 
 theme:
   name: material
+  custom_dir: docs/overrides
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
       primary: deep purple
-      accent: amber
+      accent: cyan
       toggle:
-        icon: material/brightness-7
+        icon: material/weather-sunny
         name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
       primary: deep purple
-      accent: amber
+      accent: cyan
       toggle:
-        icon: material/brightness-4
+        icon: material/weather-night
         name: Switch to light mode
   features:
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.tracking
     - navigation.tabs
+    - navigation.tabs.sticky
     - navigation.sections
     - navigation.expand
     - navigation.top
@@ -33,7 +38,9 @@ theme:
     - content.tabs.link
     - search.highlight
     - search.suggest
+    - search.share
     - toc.follow
+    - announce.dismiss
   icon:
     repo: fontawesome/brands/github
     logo: material/vector-polygon
@@ -50,6 +57,9 @@ extra:
       link: https://pypi.org/project/thorvg-cython/
       name: thorvg-cython on PyPI
   generator: false
+  status:
+    new: Recently added
+    deprecated: Deprecated
 
 extra_css:
   - stylesheets/extra.css
@@ -72,6 +82,8 @@ markdown_extensions:
   - pymdownx.tasklist:
       custom_checkbox: true
   - pymdownx.mark
+  - pymdownx.critic
+  - pymdownx.keys
   - attr_list
   - md_in_html
   - def_list
