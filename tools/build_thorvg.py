@@ -1015,8 +1015,9 @@ def build_android(root: Path, gpu: str, *, ndk: str = "",
                 "cpp_link_args = ['-ldl']",
                 "cpp_link_args = []",
             )
-        # Statically link libomp so the wheel doesn't need libomp.so at runtime
-        content = _inject_cross_list(content, "cpp_link_args", ["-static-openmp"])
+        # Statically link libomp and libc++ so the wheel doesn't need
+        # libomp.so or libc++_shared.so at runtime.
+        content = _inject_cross_list(content, "cpp_link_args", ["-static-openmp", "-static-libstdc++"])
         out.write_text(content)
         print(f"  Generated cross file: {out}")
 

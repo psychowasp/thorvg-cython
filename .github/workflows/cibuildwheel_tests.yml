@@ -152,8 +152,6 @@ jobs:
       run: cibuildwheel --platform android --output-dir wheelhouse
       env:
         CIBW_BUILD: "cp313-android_*"
-        # Override pyproject.toml repair skip so default repair bundles libc++_shared.so for testing.
-        CIBW_REPAIR_WHEEL_COMMAND_ANDROID: ""
 
     - uses: actions/upload-artifact@v4
       with:
