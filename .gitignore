@@ -13,6 +13,7 @@ build/
 *.c
 *.cpp
 *.html
+!docs/overrides/**/*.html
 
 # Virtual environments
 .venv/
