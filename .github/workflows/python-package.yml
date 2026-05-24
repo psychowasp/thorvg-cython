@@ -21,7 +21,7 @@ jobs:
 
     - name: Download and build ThorVG
       env:
-        THORVG_VERSION: "1.0.1"
+        THORVG_VERSION: "1.0.5"
       run: |
         uv tool install meson
         curl -sL https://github.com/thorvg/thorvg/archive/refs/tags/v${THORVG_VERSION}.tar.gz | tar xz
@@ -43,7 +43,7 @@ jobs:
 
     - name: Download and build ThorVG
       env:
-        THORVG_VERSION: "1.0.1"
+        THORVG_VERSION: "1.0.5"
       run: |
         uv tool install meson
         curl -sL https://github.com/thorvg/thorvg/archive/refs/tags/v${THORVG_VERSION}.tar.gz | tar xz
@@ -65,7 +65,7 @@ jobs:
 
     - name: Download and build ThorVG
       env:
-        THORVG_VERSION: "1.0.1"
+        THORVG_VERSION: "1.0.5"
       shell: bash
       run: |
         uv tool install meson

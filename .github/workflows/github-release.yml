@@ -88,7 +88,7 @@ jobs:
       run: uv tool install cibuildwheel
 
     - name: Pre-build thorvg for iOS (creates xcframeworks)
-      run: python3 tools/build_thorvg.py ios --thorvg-root=thorvg --version=1.0.3
+      run: python3 tools/build_thorvg.py ios --thorvg-root=thorvg --version=1.0.5
 
     - name: Verify xcframeworks exist
       run: |
