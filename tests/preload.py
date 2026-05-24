@@ -4,6 +4,11 @@ Android's classloader-namespace (clns-*) blocks ``$ORIGIN`` rpath resolution
 inside the testbed APK, so we must ``ctypes.CDLL`` the library by its full
 path *before* importing any Cython extension that links against it.
 
+libthorvg-1.so is injected into ``.libs/{abi}/`` inside the wheel by
+``tools/add_android_libs.py`` at repair time.  When cibuildwheel installs the
+repaired wheel for testing it lands at
+``site-packages/.libs/{abi}/libthorvg-1.so``.
+
 Usage (in conftest.py, before any thorvg_cython import)::
 
     from preload import ensure_libthorvg
@@ -18,12 +23,10 @@ from os.path import join, exists
 def ensure_libthorvg() -> None:
     """Load ``libthorvg-1.so`` into the process on Android."""
     if sys.platform == "android":
-        
-
         import ctypes
+        import platform
         from pathlib import Path
 
-        # The .so sits next to the Cython extensions inside the installed package.
         pkg_dir = Path(__file__).resolve().parent.parent  # tests/ → project root
         # At test-time the wheel is already installed; find the package location.
         try:
@@ -36,6 +39,15 @@ def ensure_libthorvg() -> None:
             pass
 
         lib = pkg_dir / "libthorvg-1.so"
+        if not lib.exists():
+            # New wheel layout: libthorvg-1.so is in .libs/{abi}/ at the
+            # site-packages root (injected by add_android_libs.py at repair time).
+            # cibuildwheel's test runner installs the repaired wheel normally, so
+            # .libs/arm64-v8a/libthorvg-1.so ends up beside the package dir.
+            machine = platform.machine()  # 'aarch64' or 'x86_64'
+            abi = "arm64-v8a" if machine == "aarch64" else machine
+            lib = pkg_dir.parent / ".libs" / abi / "libthorvg-1.so"
+
         if lib.exists():
             ctypes.CDLL(str(lib), mode=ctypes.RTLD_GLOBAL)
 
