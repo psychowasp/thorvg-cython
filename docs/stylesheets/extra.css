@@ -1,0 +1,123 @@
+/* ===== thorvg-cython documentation custom styles ===== */
+
+/* Hero section on the homepage */
+.md-typeset .hero {
+  text-align: center;
+  padding: 2rem 0;
+}
+
+.md-typeset .hero h1 {
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.md-typeset .hero .hero-tagline {
+  font-size: 1.25rem;
+  color: var(--md-default-fg-color--light);
+  margin-bottom: 2rem;
+}
+
+/* Feature grid cards - ensure proper styling */
+.md-typeset .grid.cards > ul > li,
+.md-typeset .grid.cards > ol > li,
+.md-typeset .grid > .card {
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.md-typeset .grid.cards > ul > li:hover,
+.md-typeset .grid.cards > ol > li:hover,
+.md-typeset .grid > .card:hover {
+  border-color: var(--md-accent-fg-color);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+/* Badge styling for platform support table */
+.md-typeset .badge-supported {
+  background-color: #4caf50;
+  color: white;
+  padding: 0.1rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* Code blocks enhancement */
+.md-typeset pre > code {
+  font-size: 0.82rem;
+}
+
+/* API reference method signature styling */
+.md-typeset .doc-heading code {
+  font-size: 0.9rem;
+  background: none;
+  padding: 0;
+}
+
+/* Admonition styling tweaks */
+.md-typeset .admonition,
+.md-typeset details {
+  border-radius: 0.5rem;
+}
+
+/* Table styling */
+.md-typeset table:not([class]) {
+  border-radius: 0.5rem;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.md-typeset table:not([class]) th {
+  background-color: var(--md-default-fg-color--lightest);
+  font-weight: 600;
+}
+
+/* Footer enhancement */
+.md-footer {
+  margin-top: 2rem;
+}
+
+/* Dark mode adjustments */
+[data-md-color-scheme="slate"] .md-typeset .grid.cards > ul > li,
+[data-md-color-scheme="slate"] .md-typeset .grid.cards > ol > li {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-md-color-scheme="slate"] .md-typeset .grid.cards > ul > li:hover,
+[data-md-color-scheme="slate"] .md-typeset .grid.cards > ol > li:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+/* Version badge in the header */
+.md-typeset .version-badge {
+  display: inline-block;
+  background: var(--md-accent-fg-color);
+  color: var(--md-accent-bg-color);
+  padding: 0.15rem 0.6rem;
+  border-radius: 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  vertical-align: middle;
+  margin-left: 0.5rem;
+}
+
+/* Inline code in headings */
+.md-typeset h2 code,
+.md-typeset h3 code,
+.md-typeset h4 code {
+  font-size: 0.85em;
+}
+
+/* Content tabs styling */
+.md-typeset .tabbed-set {
+  border-radius: 0.5rem;
+}
+
+/* Architecture diagrams (code blocks used as ASCII art) */
+.md-typeset pre:has(code.language-text),
+.md-typeset pre:has(code.language-plaintext) {
+  font-size: 0.78rem;
+}

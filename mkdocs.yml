@@ -26,12 +26,33 @@ theme:
     - navigation.sections
     - navigation.expand
     - navigation.top
+    - navigation.indexes
+    - navigation.footer
     - content.code.copy
     - content.code.annotate
+    - content.tabs.link
     - search.highlight
     - search.suggest
+    - toc.follow
   icon:
     repo: fontawesome/brands/github
+    logo: material/vector-polygon
+  font:
+    text: Inter
+    code: JetBrains Mono
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/Py-Swift/thorvg-cython
+      name: thorvg-cython on GitHub
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/thorvg-cython/
+      name: thorvg-cython on PyPI
+  generator: false
+
+extra_css:
+  - stylesheets/extra.css
 
 markdown_extensions:
   - admonition
@@ -39,15 +60,26 @@ markdown_extensions:
   - pymdownx.superfences
   - pymdownx.highlight:
       anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
   - pymdownx.inlinehilite
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.snippets
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.mark
   - attr_list
   - md_in_html
+  - def_list
   - tables
+  - footnotes
   - toc:
       permalink: true
+      toc_depth: 3
 
 plugins:
   - search
