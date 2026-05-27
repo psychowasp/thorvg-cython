@@ -143,6 +143,12 @@ jobs:
       env:
         CIBW_BUILD: "cp313-* cp314-*"
 
+    - name: Validate Android wheel integrity
+      run: |
+        for whl in wheelhouse/*.whl; do
+          python3 -m zipfile -t "$whl" || { echo "CORRUPT: $whl"; exit 1; }
+        done
+
     - uses: actions/upload-artifact@v4
       with:
         name: wheels-android
@@ -223,6 +229,27 @@ jobs:
 
     - name: List collected files
       run: ls -lh dist/
+
+    - name: Validate wheel integrity
+      run: |
+        echo "Verifying all wheels are valid ZIP archives..."
+        failed=0
+        for whl in dist/*.whl; do
+          if ! python3 -m zipfile -t "$whl" > /dev/null 2>&1; then
+            echo "FAILED: $whl is a corrupt ZIP archive"
+            failed=1
+          else
+            echo "  OK: $(basename "$whl")"
+          fi
+        done
+        if [ "$failed" -ne 0 ]; then
+          echo ""
+          echo "ERROR: One or more wheels are corrupt. Aborting upload."
+          echo "No wheels will be published until ALL are valid."
+          exit 1
+        fi
+        echo ""
+        echo "All $(ls dist/*.whl | wc -l) wheels passed integrity check."
 
     - name: Publish to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1

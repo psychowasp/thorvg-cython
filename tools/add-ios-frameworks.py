@@ -58,19 +58,42 @@ def _resolve_xcframeworks(cli_paths: list[str] | None) -> list[str]:
 
 
 def _inject_xcframework(whl_path: str, xcfw: str) -> int:
-    """Open a wheel and inject xcframework files. Returns number of files added."""
-    count = 0
-    with zipfile.ZipFile(whl_path, "a", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as whl:
-        for root, _dirs, files in os.walk(xcfw):
-            for fname in files:
-                file_path = os.path.join(root, fname)
-                arcname = os.path.join(
-                    ".frameworks",
-                    os.path.relpath(file_path, os.path.dirname(xcfw)),
-                )
-                whl.write(file_path, arcname)
-                count += 1
-    return count
+    """Rewrite a wheel with xcframework files injected. Returns number of files added.
+
+    We rebuild the ZIP from scratch rather than using append mode ("a"), which
+    can produce duplicate central-directory entries and corrupt archives that
+    PyPI rejects ("Mis-matched data size").
+    """
+    import tempfile
+
+    new_entries: list[tuple[str, str]] = []  # (arcname, file_path)
+    for root, _dirs, files in os.walk(xcfw):
+        for fname in files:
+            file_path = os.path.join(root, fname)
+            arcname = os.path.join(
+                ".frameworks",
+                os.path.relpath(file_path, os.path.dirname(xcfw)),
+            )
+            new_entries.append((arcname, file_path))
+
+    if not new_entries:
+        return 0
+
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".whl", dir=os.path.dirname(whl_path))
+    os.close(tmp_fd)
+    try:
+        with zipfile.ZipFile(whl_path, "r") as zf_in:
+            with zipfile.ZipFile(tmp_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as zf_out:
+                for item in zf_in.infolist():
+                    zf_out.writestr(item, zf_in.read(item))
+                for arcname, file_path in new_entries:
+                    zf_out.write(file_path, arcname)
+        os.replace(tmp_path, whl_path)
+    except BaseException:
+        os.unlink(tmp_path)
+        raise
+
+    return len(new_entries)
 
 
 def _inject_all(whl_path: str, xcframeworks: list[str]) -> int:
