@@ -17,6 +17,7 @@ import base64
 import hashlib
 import os
 import sys
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -61,22 +62,36 @@ def add_libs_to_wheels(wheels_dir: str) -> None:
         )
         arcname = f".libs/{abi}/{_THORVG_SO}"
 
-        # Read existing RECORD so we can append to it.
+        # Rewrite the wheel with the new library injected.
+        # Using append mode ("a") on a ZIP and overwriting RECORD causes
+        # duplicate entries and corrupted archives that PyPI rejects with
+        # "Mis-matched data size".  Instead, we rebuild the wheel from scratch.
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".whl", dir=wheels_dir)
+        os.close(tmp_fd)
+
         dist_info_name = None
         record_data = ""
-        with zipfile.ZipFile(wheel, "r") as zf:
-            for name in zf.namelist():
-                if name.endswith(".dist-info/RECORD"):
-                    dist_info_name = name
-                    record_data = zf.read(name).decode("utf-8")
-                    break
+        with zipfile.ZipFile(wheel, "r") as zf_in:
+            with zipfile.ZipFile(tmp_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as zf_out:
+                for item in zf_in.infolist():
+                    if item.filename.endswith(".dist-info/RECORD"):
+                        dist_info_name = item.filename
+                        record_data = zf_in.read(item).decode("utf-8")
+                        # Will write updated RECORD at the end
+                        continue
+                    zf_out.writestr(item, zf_in.read(item))
 
-        with zipfile.ZipFile(wheel, "a", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
-            print(f"  Adding {arcname} to {wheel.name}")
-            zf.writestr(arcname, data)
-            if dist_info_name:
-                updated = record_data + f"{arcname},sha256={digest},{len(data)}\n"
-                zf.writestr(dist_info_name, updated)
+                # Add the shared library
+                print(f"  Adding {arcname} to {wheel.name}")
+                zf_out.writestr(arcname, data)
+
+                # Write updated RECORD with the new entry
+                if dist_info_name:
+                    updated = record_data + f"{arcname},sha256={digest},{len(data)}\n"
+                    zf_out.writestr(dist_info_name, updated)
+
+        # Replace the original wheel with the rewritten one
+        Path(tmp_path).replace(wheel)
 
 
 if __name__ == "__main__":
