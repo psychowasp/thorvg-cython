@@ -27,6 +27,7 @@ themselves.
 import argparse
 import os
 import shutil
+import tempfile
 import zipfile
 
 
@@ -64,8 +65,6 @@ def _inject_xcframework(whl_path: str, xcfw: str) -> int:
     can produce duplicate central-directory entries and corrupt archives that
     PyPI rejects ("Mis-matched data size").
     """
-    import tempfile
-
     new_entries: list[tuple[str, str]] = []  # (arcname, file_path)
     for root, _dirs, files in os.walk(xcfw):
         for fname in files:
@@ -89,7 +88,7 @@ def _inject_xcframework(whl_path: str, xcfw: str) -> int:
                 for arcname, file_path in new_entries:
                     zf_out.write(file_path, arcname)
         os.replace(tmp_path, whl_path)
-    except BaseException:
+    except Exception:
         os.unlink(tmp_path)
         raise
 
