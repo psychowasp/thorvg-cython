@@ -1,6 +1,6 @@
 """thorvg-cython — Cython bindings for the ThorVG C API."""
 
-__version__ = "1.0.0"
+__version__ = "0.0.5.post1"
 
 from .thorvg import (  # noqa: F401
     # Enums
