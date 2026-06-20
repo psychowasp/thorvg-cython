@@ -59,11 +59,11 @@ ANGLE_BASE_URL = (
 
 # Allowed GPU values per platform
 _VALID_GPU: dict[str, set[str]] = {
-    "linux":   {"gl"},
+    "linux":   {"gl", "vulkan"},
     "windows": {"gl", "angle"},
-    "macos":   {"angle", "metal"},
-    "ios":     {"angle", "metal"},
-    "android": {"gl", "gles", "angle"},
+    "macos":   {"angle", "metal", "vulkan"},
+    "ios":     {"angle", "metal", "vulkan"},
+    "android": {"gl", "gles", "angle", "vulkan"},
 }
 
 
@@ -231,7 +231,9 @@ def _meson_common(platform: str, gpu: str, *,
     # Engine + extra flags depend on GPU mode
     extras = ["lottie_exp", "openmp"]
 
-    if gpu:
+    if gpu == "vulkan":
+        args.append("-Dengines=cpu,vulkan")
+    elif gpu:
         args.append("-Dengines=cpu,gl")
         # OpenGL ES extra is needed for gles / angle backends
         if gpu in ("gles", "angle"):
