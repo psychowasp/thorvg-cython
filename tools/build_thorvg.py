@@ -627,6 +627,64 @@ def _apple_sdk(platform_name: str) -> str:
 # ---------------------------------------------------------------------------
 #  Platform: Linux
 # ---------------------------------------------------------------------------
+def _linux_wgpu_pkgconfig_dir(build_root: Path) -> str | None:
+    """Alias an installed ``wgpu-native.pc`` (hyphen) as ``wgpu_native.pc``
+    (underscore) so meson's ``dependency('wgpu_native')`` in thorvg's `wg`
+    engine can find it.
+
+    wgpu-native has no distro package, so downstream consumers (e.g. a
+    Swift `CWgpu` systemLibrary target) build+install it themselves under a
+    local prefix with a `.pc` name of their own choosing — here we only need
+    *some* installed wgpu-native to already be on PKG_CONFIG_PATH, hyphen or
+    underscore. Returns a directory to prepend to PKG_CONFIG_PATH, or None
+    if no installed wgpu-native was found at all.
+    """
+    found = shutil.which("pkg-config") and subprocess.run(
+        ["pkg-config", "--exists", "wgpu-native"]
+    ).returncode == 0
+    if not found:
+        return None
+    libs = subprocess.run(
+        ["pkg-config", "--variable=libdir", "wgpu-native"],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    incs = subprocess.run(
+        ["pkg-config", "--variable=includedir", "wgpu-native"],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    version = subprocess.run(
+        ["pkg-config", "--modversion", "wgpu-native"],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+
+    # The wg engine does `#include <webgpu/webgpu.h>`, but wgpu-native
+    # installs its headers flat (webgpu.h, wgpu.h directly under
+    # includedir, e.g. from NucleantVulkan/scripts/build_wgpu.py). Stage a
+    # `webgpu/` subdir of symlinks so that include path resolves.
+    stage_inc = build_root / "wgpu_stage" / "include"
+    webgpu_dir = stage_inc / "webgpu"
+    webgpu_dir.mkdir(parents=True, exist_ok=True)
+    for h in ("webgpu.h", "wgpu.h"):
+        src = Path(incs) / h
+        dst = webgpu_dir / h
+        if not src.is_file():
+            sys.exit(f"ERROR: wgpu-native header not found: {src}")
+        if dst.is_symlink() or dst.exists():
+            dst.unlink()
+        dst.symlink_to(src)
+
+    pc_dir = build_root / "wgpu_pc"
+    pc_dir.mkdir(parents=True, exist_ok=True)
+    (pc_dir / "wgpu_native.pc").write_text(textwrap.dedent(f"""\
+        Name: wgpu_native
+        Description: wgpu-native (WebGPU) for the ThorVG wg engine
+        Version: {version}
+        Cflags: -I{stage_inc}
+        Libs: -L{libs} -lwgpu_native
+        """))
+    return str(pc_dir)
+
+
 def build_linux(root: Path, gpu: str) -> None:
     """Build thorvg for the native Linux architecture."""
     _ensure_tool("meson")
@@ -651,8 +709,24 @@ def build_linux(root: Path, gpu: str) -> None:
 
     meson_args = _meson_common("linux", gpu, native=True)
 
+    # The `wg` engine resolves wgpu via `dependency('wgpu_native')` — point
+    # meson at an already-installed wgpu-native (built by e.g.
+    # NucleantVulkan/scripts/build_wgpu.py) without disturbing the rest of
+    # the machine's pkg-config search path.
+    env = None
+    if gpu == "vulkan":
+        wgpu_pc_dir = _linux_wgpu_pkgconfig_dir(build_root)
+        if not wgpu_pc_dir:
+            sys.exit(
+                "ERROR: --gpu=vulkan needs wgpu-native installed and "
+                "discoverable via pkg-config first (no distro package "
+                "provides it) — see NucleantVulkan/scripts/build_wgpu.py."
+            )
+        env = {**os.environ, "PKG_CONFIG_PATH":
+               wgpu_pc_dir + os.pathsep + os.environ.get("PKG_CONFIG_PATH", "")}
+
     print(f">>> Building: linux_{arch}")
-    _run(["meson", "setup", str(build_dir)] + meson_args, cwd=root)
+    _run(["meson", "setup", str(build_dir)] + meson_args, cwd=root, env=env)
     _run(["ninja", "-C", str(build_dir)], cwd=root)
     print(f"<<< Done: linux_{arch}\n")
 
