@@ -4,10 +4,17 @@
 cpp = ['clang++', '-arch', 'x86_64', '-isysroot', '/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk']
 ar = 'ar'
 strip = 'strip'
+# Route meson's "run" checks through `true` (exits 0 without exec'ing the iOS
+# target binary — launching one wedges amfid/dyld on the host).
+exe_wrapper = '/usr/bin/true'
 
 [properties]
 root = '/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer'
 has_function_printf = true
+# The host can't run iOS-simulator target binaries — tell meson so it never
+# tries to execute its compiler sanity-check (otherwise `meson setup` hangs
+# forever launching an un-runnable simulator executable).
+needs_exe_wrapper = true
 
 [built-in options]
 cpp_args = ['-mios-simulator-version-min=11.0']

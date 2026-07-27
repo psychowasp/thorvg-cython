@@ -225,6 +225,11 @@ def _meson_common(platform: str, gpu: str, *,
         "--default-library=shared",
         "-Dthreads=true",
         "-Dbindings=capi",
+        # Same loaders on every platform. png/jpg resolve to thorvg's *bundled*
+        # decoders (not external libpng/turbojpeg) — the iOS build's
+        # PKG_CONFIG_LIBDIR isolation keeps the build machine's Homebrew
+        # libpng/turbojpeg invisible, so meson falls back to bundled exactly as
+        # the macOS framework does (which links neither).
         "-Dloaders=svg,lottie,ttf,png,jpg",
     ]
 
@@ -232,7 +237,7 @@ def _meson_common(platform: str, gpu: str, *,
     extras = ["lottie_exp", "openmp"]
 
     if gpu == "vulkan":
-        args.append("-Dengines=cpu,vulkan")
+        args.append("-Dengines=cpu,wg")
     elif gpu:
         args.append("-Dengines=cpu,gl")
         # OpenGL ES extra is needed for gles / angle backends
@@ -450,6 +455,93 @@ def _prepare_libomp_apple(root: Path, targets: list[dict],
     return results
 
 
+def _inject_pkg_config(cross_file: Path) -> None:
+    """Add pkg-config binary to the [binaries] section of a generated cross file."""
+    pkg_config = shutil.which("pkg-config") or shutil.which("pkgconf")
+    if not pkg_config:
+        return
+    content = cross_file.read_text()
+    if "pkg-config" not in content:
+        content = content.replace(
+            "[binaries]",
+            f"[binaries]\npkg-config = '{pkg_config}'",
+        )
+        cross_file.write_text(content)
+
+
+def _stage_wgpu_frameworks(xcfw: Path, dest: Path) -> tuple[dict[str, Path], Path]:
+    """From a wgpu_native.xcframework (bare-dylib slices), produce per-iOS-slice
+    `wgpu_native.framework` bundles so iOS ThorVG links `-framework wgpu_native`
+    (not a bare .dylib) and references `@rpath/wgpu_native.framework/wgpu_native`
+    — auto-resolving to the embedded framework at runtime.
+
+    Returns ({slice_name: framework_parent_dir}, include_dir). The include dir
+    holds `webgpu/{webgpu.h,wgpu.h}` (the wg engine does `#include
+    <webgpu/webgpu.h>`).
+    """
+    import textwrap as _tw
+
+    if dest.exists():
+        shutil.rmtree(dest)
+    inc = dest / "include" / "webgpu"
+    inc.mkdir(parents=True)
+    hdrs = xcfw / "ios-arm64" / "Headers"
+    for h in ("webgpu.h", "wgpu.h"):
+        shutil.copy2(hdrs / h, inc / h)
+
+    device = xcfw / "ios-arm64" / "libwgpu_native.dylib"
+    sim = xcfw / "ios-arm64_x86_64-simulator" / "libwgpu_native.dylib"
+
+    plist = _tw.dedent("""\
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+          "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0"><dict>
+            <key>CFBundleExecutable</key><string>wgpu_native</string>
+            <key>CFBundleIdentifier</key><string>org.gfx-rs.wgpu-native</string>
+            <key>CFBundleName</key><string>wgpu_native</string>
+            <key>CFBundlePackageType</key><string>FMWK</string>
+            <key>MinimumOSVersion</key><string>15.0</string>
+        </dict></plist>
+        """)
+
+    def _framework(src: Path, slice_name: str, thin_arch: str | None) -> Path:
+        fw_parent = dest / "fw" / slice_name
+        fw = fw_parent / "wgpu_native.framework"
+        fw.mkdir(parents=True, exist_ok=True)
+        binary = fw / "wgpu_native"
+        if thin_arch:
+            _run(["lipo", str(src), "-thin", thin_arch, "-output", str(binary)])
+        else:
+            shutil.copy2(src, binary)
+        _run(["install_name_tool", "-id",
+              "@rpath/wgpu_native.framework/wgpu_native", str(binary)])
+        (fw / "Info.plist").write_text(plist)
+        return fw_parent
+
+    fw_dirs = {
+        "ios_arm64":     _framework(device, "ios_arm64", None),
+        "ios_sim_arm64": _framework(sim, "ios_sim_arm64", "arm64"),
+        "ios_sim_x86_64": _framework(sim, "ios_sim_x86_64", "x86_64"),
+    }
+    return fw_dirs, dest / "include"
+
+
+def _inject_cross_pkg_config_path(cross_file: Path, pc_dir: str) -> None:
+    """Point the cross (host) machine's pkg-config at *pc_dir* by adding
+    `pkg_config_path` to the cross file's [built-in options]. Needed so a
+    cross build resolves e.g. wgpu_native.pc, which lives outside the default
+    (build-machine) pkg-config search path."""
+    content = cross_file.read_text()
+    if "pkg_config_path" in content:
+        return
+    content = content.replace(
+        "[built-in options]",
+        f"[built-in options]\npkg_config_path = '{pc_dir}'",
+    )
+    cross_file.write_text(content)
+
+
 def _inject_openmp_cross_file(template_path: Path, output_path: Path,
                                libomp_a: Path, omp_h_dir: Path,
                                *, framework_dir: Path | None = None) -> Path:
@@ -576,7 +668,7 @@ def build_linux(root: Path, gpu: str) -> None:
 # ---------------------------------------------------------------------------
 #  Platform: macOS
 # ---------------------------------------------------------------------------
-def build_macos(root: Path, gpu: str) -> None:
+def build_macos(root: Path, gpu: str, target_arch: str = "universal") -> None:
     """Build thorvg for macOS (arm64, x86_64, fat binary)."""
     _ensure_tool("meson")
     _ensure_tool("ninja")
@@ -588,19 +680,18 @@ def build_macos(root: Path, gpu: str) -> None:
     print("=== ThorVG macOS Build ===")
     print(f"Root: {root}")
     print(f"GPU:  {gpu or 'disabled'}")
+    print(f"Arch: {target_arch}")
     print()
 
     if build_root.exists():
         shutil.rmtree(build_root)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # --- Build libomp for macOS arm64 + x86_64 ---
-    macos_sdk = _apple_sdk("MacOSX")
-    omp_targets = [
+    all_omp_targets = [
         {
             "name": "macos_arm64",
             "system_name": "Darwin",
-            "sysroot": macos_sdk,
+            "sysroot": _apple_sdk("MacOSX"),
             "arch_cmake": "arm64",
             "arch_omp": "aarch64",
             "deployment_target": "11.0",
@@ -609,13 +700,22 @@ def build_macos(root: Path, gpu: str) -> None:
         {
             "name": "macos_x86_64",
             "system_name": "Darwin",
-            "sysroot": macos_sdk,
+            "sysroot": _apple_sdk("MacOSX"),
             "arch_cmake": "x86_64",
             "arch_omp": "x86_64",
             "deployment_target": "11.0",
             "deployment_flag": "-mmacosx-version-min=11.0",
         },
     ]
+    _SLICE_TEMPLATES = {
+        "macos_arm64":  "macos_arm64.txt",
+        "macos_x86_64": "macos_x86_64.txt",
+    }
+    build_slices = (
+        ["macos_arm64", "macos_x86_64"] if target_arch == "universal"
+        else [f"macos_{target_arch}"]
+    )
+    omp_targets = [t for t in all_omp_targets if t["name"] in build_slices]
     omp = _prepare_libomp_apple(root, omp_targets)
 
     # --- Generate cross files with OpenMP flags ---
@@ -623,14 +723,15 @@ def build_macos(root: Path, gpu: str) -> None:
     gen_cross_dir.mkdir(parents=True, exist_ok=True)
 
     cross_files = {}
-    for name, template_name in [("macos_arm64", "macos_arm64.txt"),
-                                 ("macos_x86_64", "macos_x86_64.txt")]:
+    for name in build_slices:
+        template_name = _SLICE_TEMPLATES[name]
         libomp_a, omp_h = omp[name]
         cf = _inject_openmp_cross_file(
             CROSS_DIR / template_name,
             gen_cross_dir / template_name,
             libomp_a, omp_h.parent,
         )
+        _inject_pkg_config(cf)
         cross_files[name] = cf
 
     def _build(name: str) -> None:
@@ -644,11 +745,11 @@ def build_macos(root: Path, gpu: str) -> None:
         _run(["ninja", "-C", str(bd)], cwd=root)
         print(f"<<< Done: {name}\n")
 
-    _build("macos_arm64")
-    _build("macos_x86_64")
+    for name in build_slices:
+        _build(name)
 
     # Copy individual arch outputs
-    for name in ("macos_arm64", "macos_x86_64"):
+    for name in build_slices:
         dst = output_dir / name
         dst.mkdir(parents=True, exist_ok=True)
         shutil.copy2(
@@ -656,21 +757,26 @@ def build_macos(root: Path, gpu: str) -> None:
             str(dst / "libthorvg-1.dylib"),
         )
 
-    # Fat binary via lipo
-    print(">>> Creating macOS fat dylib with lipo...")
     fat_dir = output_dir / "macos_fat"
     fat_dir.mkdir(parents=True, exist_ok=True)
-    _run([
-        "lipo", "-create",
-        str(build_root / "macos_arm64" / "src" / "libthorvg-1.dylib"),
-        str(build_root / "macos_x86_64" / "src" / "libthorvg-1.dylib"),
-        "-output", str(fat_dir / "libthorvg-1.dylib"),
-    ])
-    print("<<< Fat dylib created\n")
+    if target_arch == "universal":
+        print(">>> Creating macOS fat dylib with lipo...")
+        _run([
+            "lipo", "-create",
+            str(build_root / "macos_arm64" / "src" / "libthorvg-1.dylib"),
+            str(build_root / "macos_x86_64" / "src" / "libthorvg-1.dylib"),
+            "-output", str(fat_dir / "libthorvg-1.dylib"),
+        ])
+        print("<<< Fat dylib created\n")
+    else:
+        shutil.copy2(
+            str(build_root / build_slices[0] / "src" / "libthorvg-1.dylib"),
+            str(fat_dir / "libthorvg-1.dylib"),
+        )
 
     print("=== Build Complete ===")
-    print(f"  macOS arm64:  {output_dir / 'macos_arm64' / 'libthorvg-1.dylib'}")
-    print(f"  macOS x86_64: {output_dir / 'macos_x86_64' / 'libthorvg-1.dylib'}")
+    for name in build_slices:
+        print(f"  macOS {name}: {output_dir / name / 'libthorvg-1.dylib'}")
     print(f"  macOS fat:    {fat_dir / 'libthorvg-1.dylib'}")
 
 
@@ -805,17 +911,75 @@ def build_ios(root: Path, gpu: str) -> None:
             libomp_dylib, omp_h.parent,
             framework_dir=omp_fw_dirs[name].parent,
         )
+        # libthorvg-1.dylib links libomp.framework and (with --gpu=vulkan)
+        # wgpu_native.framework via @rpath -- without its own rpath it can
+        # never resolve either once embedded, and the wrapping .framework
+        # bundle fails to load at all (dyld reports it against whichever
+        # top-level name triggered the closure, i.e. ThorVG.framework itself).
+        # Same runtime layout the Python extensions link with in setup.py.
+        content = cf.read_text()
+        content = _inject_cross_list(
+            content, "cpp_link_args", ["-Wl,-rpath,@executable_path/Frameworks"],
+        )
+        cf.write_text(content)
         cross_files[name] = cf
+
+    # --- wgpu-native pkg-config for the `wg` (WebGPU) engine, per slice ---
+    # ThorVG's wg engine resolves wgpu via `dependency('wgpu_native')` (pkg-
+    # config). Each iOS slice links a *different-arch* libwgpu, so give each its
+    # own wgpu_native.pc and point that slice's meson setup at it via
+    # PKG_CONFIG_PATH. The wgpu install tree is staged by the caller (Nucleant's
+    # build_thorvg wrapper) at NUCLEANT_WGPU_IOS_DIR with layout:
+    #     include/webgpu/{webgpu.h,wgpu.h}   lib/<slice>/libwgpu_native.dylib
+    # wgpu comes from WGPU_XCFRAMEWORK (the built wgpu_native.xcframework). We
+    # stage per-slice `wgpu_native.framework` bundles and link them via
+    # `-framework` — on iOS we link/embed frameworks, not bare dylibs, so the
+    # ThorVG dylib references @rpath/wgpu_native.framework/wgpu_native and the
+    # app auto-resolves it to the embedded framework.
+    wgpu_pkgconfig: dict[str, str] = {}
+    wgpu_xcfw = os.environ.get("WGPU_XCFRAMEWORK")
+    if gpu == "vulkan" and wgpu_xcfw:
+        fw_dirs, wgpu_inc = _stage_wgpu_frameworks(Path(wgpu_xcfw), build_root / "wgpu_stage")
+        for name in ("ios_arm64", "ios_sim_arm64", "ios_sim_x86_64"):
+            fw_parent = fw_dirs[name]
+            pc_dir = build_root / "wgpu_pc" / name
+            pc_dir.mkdir(parents=True, exist_ok=True)
+            (pc_dir / "wgpu_native.pc").write_text(textwrap.dedent(f"""\
+                Name: wgpu_native
+                Description: wgpu-native (WebGPU) for the ThorVG wg engine
+                Version: 29.0.1.1
+                Cflags: -I{wgpu_inc}
+                Libs: -F{fw_parent} -framework wgpu_native
+                """))
+            wgpu_pkgconfig[name] = str(pc_dir)
+            # Cross builds need pkg-config declared for the host machine AND its
+            # search path pointed at our .pc — otherwise meson reports
+            # "Pkg-config for machine host machine not found".
+            _inject_pkg_config(cross_files[name])
+            _inject_cross_pkg_config_path(cross_files[name], str(pc_dir))
 
     def _build(name: str) -> None:
         bd = build_root / name
         print(f">>> Building: {name}")
+        env = None
+        if name in wgpu_pkgconfig:
+            env = {
+                **os.environ,
+                "PKG_CONFIG_PATH": wgpu_pkgconfig[name],
+                # LIBDIR *replaces* the default pkg-config search path, so the
+                # build machine's Homebrew .pc files (libpng/turbojpeg — macOS
+                # dylibs that can't link into an iOS slice) are invisible. Only
+                # wgpu_native.pc resolves; thorvg builds its png/jpg loaders
+                # bundled, matching the macOS ThorVG.framework (which links no
+                # libpng/turbojpeg either).
+                "PKG_CONFIG_LIBDIR": wgpu_pkgconfig[name],
+            }
         _run(
             ["meson", "setup", str(bd), "--cross-file", str(cross_files[name])]
             + meson_args,
-            cwd=root,
+            cwd=root, env=env,
         )
-        _run(["ninja", "-C", str(bd)], cwd=root)
+        _run(["ninja", "-C", str(bd)], cwd=root, env=env)
         print(f"<<< Done: {name}\n")
 
     _build("ios_arm64")
@@ -899,7 +1063,8 @@ def build_ios(root: Path, gpu: str) -> None:
         "-output", str(xcfw),
     ])
 
-    # --- libomp XCFramework ---
+    # --- libomp XCFramework (dynamic — the thorvg dylib + the thorvg_cython
+    #     extension both link @rpath/libomp.framework/libomp) ---
     print(">>> Creating libomp.xcframework...")
 
     # Fat simulator libomp (arm64 + x86_64)
@@ -911,7 +1076,6 @@ def build_ios(root: Path, gpu: str) -> None:
         str(omp_fw_dirs["ios_sim_x86_64"] / "libomp"),
         "-output", str(omp_sim_fat_dir / "libomp"),
     ])
-    # Get omp.h from any target (they're identical)
     _, any_omp_h = omp["ios_arm64"]
     omp_sim_fat_fw = _make_libomp_framework(
         omp_sim_fat_dir / "libomp", any_omp_h, omp_sim_fat_dir,
@@ -1252,7 +1416,7 @@ def main() -> None:
         )
         p.add_argument(
             "--gpu", default=None,
-            choices=["gl", "gles", "angle", "metal", ""],
+            choices=["gl", "gles", "angle", "metal", "vulkan", ""],
             help="GPU backend (default: THORVG_GPU env var, or disabled)",
         )
 
@@ -1263,6 +1427,13 @@ def main() -> None:
     # macos
     p_macos = sub.add_parser("macos", help="Build for macOS (fat binary)")
     _add_common(p_macos)
+    p_macos.add_argument(
+        "--target-arch",
+        default="universal",
+        choices=["universal", "x86_64", "arm64"],
+        dest="target_arch",
+        help="Which architecture slices to build (default: universal = both + fat)",
+    )
 
     # ios
     p_ios = sub.add_parser("ios", help="Build for iOS (XCFramework)")
@@ -1352,7 +1523,7 @@ def main() -> None:
     if args.platform == "linux":
         build_linux(root, gpu)
     elif args.platform == "macos":
-        build_macos(root, gpu)
+        build_macos(root, gpu, target_arch=getattr(args, "target_arch", "universal"))
     elif args.platform == "ios":
         build_ios(root, gpu)
     elif args.platform == "android":

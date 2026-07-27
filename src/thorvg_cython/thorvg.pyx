@@ -6,6 +6,7 @@ Every public class is a single ``cdef class`` importable from Python.
 from libc.stdint cimport uint8_t, uint16_t, uint32_t, int32_t, uintptr_t
 from libc.stdlib cimport malloc, free
 from libc.string cimport memcpy, memset
+from cpython.pycapsule cimport PyCapsule_New
 
 cimport thorvg_cython.cthorvg as tvg
 
@@ -326,6 +327,15 @@ cdef class Paint:
 
     cpdef get_ref(self):
         return tvg.tvg_paint_get_ref(self._p)
+
+    # -- native interop --
+    def capsule(self):
+        """PyCapsule("Tvg_Paint") wrapping this paint's raw handle — for
+        handing scenes/paints to native hosts. No ownership transfer: the
+        capsule is a borrowed view, keep this Paint alive while it's used."""
+        if self._p == NULL:
+            raise ValueError("paint handle is NULL")
+        return PyCapsule_New(<void*>self._p, "Tvg_Paint", NULL)
 
     # -- visibility --
     cpdef set_visible(self, bint visible):

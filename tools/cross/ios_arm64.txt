@@ -4,10 +4,19 @@
 cpp = ['clang++', '-arch', 'arm64', '-isysroot', '/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk']
 ar = 'ar'
 strip = 'strip'
+# Route meson's "run" checks (its compiler sanity check) through `true`, which
+# exits 0 without ever exec'ing the target binary. Launching an unsigned iOS
+# binary on the host wedges in amfid/dyld (uninterruptible hang), and
+# needs_exe_wrapper alone didn't stop meson from trying to run it.
+exe_wrapper = '/usr/bin/true'
 
 [properties]
 root = '/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer'
 has_function_printf = true
+# The host can't run iOS target binaries — tell meson so it never tries to
+# execute its compiler sanity-check / run-checks (otherwise `meson setup`
+# hangs forever launching an un-runnable target executable).
+needs_exe_wrapper = true
 
 [built-in options]
 cpp_args = ['-miphoneos-version-min=11.0']

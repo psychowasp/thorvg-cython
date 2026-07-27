@@ -41,6 +41,10 @@ wheelhouse/
 thorvg
 uv.lock
 
+# vendored local wgpu-native binaries (not wired into build scripts; not
+# checked in -- 90+MB of prebuilt dylibs/.a files)
+wgpu-native-macos/
+
 # MkDocs
 site/
 

@@ -26,6 +26,8 @@ import subprocess
 # ---------------------------------------------------------------------------
 THORVG_GPU = os.environ.get("THORVG_GPU", "")
 GPU_MODE = bool(THORVG_GPU)
+VULKAN_MODE = THORVG_GPU == "vulkan"
+GL_MODE = GPU_MODE and not VULKAN_MODE
 import sysconfig
 from pathlib import Path
 
@@ -198,9 +200,8 @@ def _bundle_dylib(src_path: Path, dest_dir: Path) -> None:
                 id_basename = os.path.basename(old_id)
                 if id_basename != src_path.name:
                     versioned_dest = dest_dir / id_basename
-                    if not versioned_dest.exists():
-                        shutil.copy2(str(dest), str(versioned_dest))
-                        print(f"[setup.py] Created versioned copy: {id_basename}")
+                    shutil.copy2(str(dest), str(versioned_dest))
+                    print(f"[setup.py] Created versioned copy: {id_basename}")
         except (subprocess.CalledProcessError, FileNotFoundError):
             pass
 
@@ -544,9 +545,7 @@ _ext_modules = [
     ),
 ]
 
-# GPU mode: compile gl_canvas.pyx -> gl_canvas.so (overrides gl_canvas.py stub)
-# No GPU:   gl_canvas.py (plain Python stub) is used at import time
-if GPU_MODE:
+if GL_MODE:
     _ext_modules.append(
         Extension(
             name="thorvg_cython.gl_canvas",
@@ -554,9 +553,18 @@ if GPU_MODE:
             **_ext_kwargs,
         ),
     )
-    print(f"[setup.py] GPU_MODE enabled (THORVG_GPU={THORVG_GPU!r}) -- compiling real GlCanvas")
+    print(f"[setup.py] GL_MODE enabled (THORVG_GPU={THORVG_GPU!r}) -- compiling GlCanvas")
+elif VULKAN_MODE:
+    _ext_modules.append(
+        Extension(
+            name="thorvg_cython.vulkan_canvas",
+            sources=["src/thorvg_cython/vulkan_canvas.pyx"],
+            **_ext_kwargs,
+        ),
+    )
+    print(f"[setup.py] VULKAN_MODE enabled -- compiling VulkanCanvas")
 else:
-    print("[setup.py] GPU_MODE disabled -- gl_canvas.py stub will be used")
+    print("[setup.py] GPU_MODE disabled -- gl_canvas.py and vulkan_canvas.py stubs will be used")
 
 extensions = cythonize(
     _ext_modules,
@@ -570,6 +578,19 @@ extensions = cythonize(
 # ---------------------------------------------------------------------------
 #  Setup
 # ---------------------------------------------------------------------------
+_thorvg_cython_exclude = []
+if GL_MODE:
+    _thorvg_cython_exclude.append("gl_canvas.py")
+if VULKAN_MODE:
+    _thorvg_cython_exclude.append("vulkan_canvas.py")
+if _is_ios_build():
+    # iOS links thorvg/libomp/wgpu via their .xcframeworks (injected into
+    # .frameworks/ post-build by tools/add-ios-frameworks.py). Bare .dylibs
+    # only belong in this package dir for macOS (@loader_path linking) — if a
+    # prior macOS build left one in src/thorvg_cython/, the unscoped
+    # package_data glob below would sweep it into the iOS wheel too.
+    _thorvg_cython_exclude.append("*.dylib")
+
 setup(
     name="thorvg-cython",
     version="1.0.0",
@@ -582,8 +603,11 @@ setup(
     url="https://github.com/thorvg/thorvg",
     packages=find_packages(where="src"),
     package_dir={"": "src"},
-    exclude_package_data={"": ["*.cpp"], **({"thorvg_cython": ["gl_canvas.py"]} if GPU_MODE else {})},
-    package_data={"thorvg_cython": ["*.dylib", "*.so", "*.dll", "*.pxd"]},
+    exclude_package_data={
+        "": ["*.cpp"],
+        **({"thorvg_cython": _thorvg_cython_exclude} if _thorvg_cython_exclude else {}),
+    },
+    package_data={"thorvg_cython": ["*.dylib", "*.so", "*.dll", "*.pxd", "*.pyi"]},
     ext_modules=extensions,
     python_requires=">=3.9",
     zip_safe=False,
