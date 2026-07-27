@@ -48,7 +48,7 @@ THORVG_ROOT=.. THORVG_LIB_DIR=../builddir/src pip install -e .
 | `THORVG_LIB_DIR` | Path to built libraries | `$THORVG_ROOT/output` |
 | `THORVG_XCFRAMEWORK` | Path to `.xcframework` | `$THORVG_ROOT/output/thorvg.xcframework` |
 | `THORVG_CAPI_INCLUDE` | Path to `thorvg_capi.h` | `$THORVG_ROOT/src/bindings/capi` |
-| `NO_EMBED_FRAMEWORKS` | iOS wheel repair only: skip injecting `.frameworks/` (thorvg/libomp/wgpu xcframeworks) into the wheel — for consumers (e.g. NucleantSkia) that bundle those frameworks themselves. Extensions are still retargeted to expect `ThorVG.framework`. | unset (frameworks embedded) |
+| `NO_EMBED_FRAMEWORKS` | iOS wheel repair only: skip injecting `.frameworks/` (thorvg/libomp/wgpu xcframeworks) into the wheel — for consumers that bundle those frameworks themselves. Extensions are still retargeted to expect `ThorVG.framework`. | unset (frameworks embedded) |
 
 ### cibuildwheel
 

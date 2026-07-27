@@ -928,10 +928,8 @@ def build_ios(root: Path, gpu: str) -> None:
     # ThorVG's wg engine resolves wgpu via `dependency('wgpu_native')` (pkg-
     # config). Each iOS slice links a *different-arch* libwgpu, so give each its
     # own wgpu_native.pc and point that slice's meson setup at it via
-    # PKG_CONFIG_PATH. The wgpu install tree is staged by the caller (Nucleant's
-    # build_thorvg wrapper) at NUCLEANT_WGPU_IOS_DIR with layout:
-    #     include/webgpu/{webgpu.h,wgpu.h}   lib/<slice>/libwgpu_native.dylib
-    # wgpu comes from WGPU_XCFRAMEWORK (the built wgpu_native.xcframework). We
+    # PKG_CONFIG_PATH. wgpu comes from WGPU_XCFRAMEWORK (the built
+    # wgpu_native.xcframework, set by the caller as an env var). We
     # stage per-slice `wgpu_native.framework` bundles and link them via
     # `-framework` — on iOS we link/embed frameworks, not bare dylibs, so the
     # ThorVG dylib references @rpath/wgpu_native.framework/wgpu_native and the

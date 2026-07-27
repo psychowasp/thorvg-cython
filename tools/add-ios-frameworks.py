@@ -21,11 +21,11 @@ site-packages level is discovered by the host Xcode project.
 
 ThorVG casing: thorvg-cython's own build (tools/build_thorvg.py) emits a
 lowercase thorvg.xcframework/thorvg.framework/thorvg, matching upstream
-ThorVG's naming. Nucleant's Swift-side package (NucleantThorVG) instead
-ships ThorVG.xcframework/ThorVG.framework/ThorVG. Both can end up embedded
-in the same app's Frameworks directory, and on the default case-insensitive
-APFS volume "ThorVG.framework" and "thorvg.framework" collide -- whichever
-copy lands second silently clobbers the other, which is what produced the
+ThorVG's naming. Some downstream Swift packages instead ship
+ThorVG.xcframework/ThorVG.framework/ThorVG. Both can end up embedded in the
+same app's Frameworks directory, and on the default case-insensitive APFS
+volume "ThorVG.framework" and "thorvg.framework" collide -- whichever copy
+lands second silently clobbers the other, which is what produced the
 `Library not loaded: @rpath/ThorVG.framework/ThorVG` crash. To eliminate the
 collision, this script renames the injected thorvg xcframework to ThorVG
 everywhere (directory names, binary name, install name, Info.plist) and
@@ -38,14 +38,13 @@ the ANGLE xcframeworks (libEGL.xcframework, libGLESv2.xcframework)
 themselves.
 
 NO_EMBED_FRAMEWORKS: when this env var is set (non-empty), no xcframework
-files are injected into the wheel at all -- consumers such as NucleantSkia
-build against thorvg-cython for its headers/extensions but bundle
-ThorVG.xcframework and libomp.xcframework themselves (and get the wgpu
-xcframeworks via NucleantVulkan), so embedding them here would just be
-dead weight in the wheel. The compiled extensions still get their install
-names retargeted from @rpath/thorvg.framework/thorvg to
+files are injected into the wheel at all -- for consumers that build against
+thorvg-cython for its headers/extensions but bundle ThorVG.xcframework,
+libomp.xcframework, and the wgpu xcframeworks themselves, so embedding them
+here would just be dead weight in the wheel. The compiled extensions still
+get their install names retargeted from @rpath/thorvg.framework/thorvg to
 @rpath/ThorVG.framework/ThorVG so they resolve against whatever framework
-the consumer ends up bundling under the capitalized Nucleant convention.
+the consumer ends up bundling under the capitalized name.
 """
 import argparse
 import os

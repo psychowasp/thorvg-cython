@@ -24,11 +24,12 @@ env vars like `THORVG_GPU`) or in CI workflow files — never wired directly
 into `pyproject.toml`'s cibuildwheel config. This keeps the default wheel
 build portable and CPU-only; GPU builds are opted into elsewhere.
 
-This was violated once (commit `083c8f6` area / a since-reverted working-tree
-change) by hardcoding a personal machine path
-(`/Users/codebuilder/Documents/dev_projects/nucleant_dev/NucleantVulkan/...`)
-into `pyproject.toml`'s iOS `environment`/`repair-wheel-command`. That breaks
-the build for every other contributor and CI, and leaks unrelated private
-project paths into a public repo. Do not repeat this — if GPU/Vulkan/WebGPU
-support needs wiring for a build, do it in `tools/build_thorvg.py` or a
-CI-only override, and leave `pyproject.toml` alone.
+This was violated once (a since-reverted working-tree change) by hardcoding
+a personal machine path to an unrelated private project into `pyproject.toml`'s
+iOS `environment`/`repair-wheel-command`. That breaks the build for every
+other contributor and CI, and leaks unrelated private project paths/names
+into a public repo. Do not repeat this — if GPU/Vulkan/WebGPU support needs
+wiring for a build, do it in `tools/build_thorvg.py` or a CI-only override,
+and leave `pyproject.toml` alone. Also never name unrelated private
+projects/repos in code comments or docstrings anywhere in this repo — keep
+references generic (e.g. "a downstream Swift consumer") instead.
