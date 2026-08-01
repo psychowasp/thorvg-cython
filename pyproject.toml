@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "thorvg-cython"
-version = "0.0.5.post1"
+version = "0.0.6"
 description = "Cython bindings for the ThorVG vector graphics library"
 readme = "README.md"
 requires-python = ">=3.11"
