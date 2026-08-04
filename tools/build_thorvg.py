@@ -685,6 +685,77 @@ def _linux_wgpu_pkgconfig_dir(build_root: Path) -> str | None:
     return str(pc_dir)
 
 
+#: Android ABI directory name for each meson cross-file arch.
+_ANDROID_WGPU_ABIS = {"aarch64": "arm64-v8a", "x86_64": "x86_64"}
+
+
+def _android_wgpu_pkgconfig_dir(build_root: Path, arch: str) -> tuple[str, Path, Path]:
+    """Per-ABI pkg-config dir for wgpu-native, staged like the Linux one.
+
+    Only called when a GPU backend was requested — a CPU build never needs
+    wgpu-native and must not require it.
+
+    The prefix comes from ``THORVG_ANDROID_WGPU_ROOT``, which is expected to
+    hold NucleantVulkan's ``build_wgpu.py --android`` layout::
+
+        <root>/<abi>/lib/libwgpu_native.so
+        <root>/include/{webgpu.h,wgpu.h}
+
+    Two mismatches have to be bridged, the same two the Linux path bridges:
+    meson asks for ``wgpu_native`` with an underscore while build_wgpu.py
+    writes ``wgpu-native.pc``, and the wg engine does ``#include
+    <webgpu/webgpu.h>`` while the headers are installed flat.
+    """
+    root_env = os.environ.get("THORVG_ANDROID_WGPU_ROOT", "")
+    if not root_env:
+        sys.exit(
+            "ERROR: a GPU backend was requested for Android but "
+            "THORVG_ANDROID_WGPU_ROOT is not set.\n"
+            "Point it at a wgpu-native install with <abi>/lib and include/, "
+            "e.g. NucleantVulkan/Dependencies/android."
+        )
+    wgpu_root = Path(root_env)
+    abi = _ANDROID_WGPU_ABIS.get(arch)
+    if abi is None:
+        sys.exit(f"ERROR: no wgpu-native ABI mapping for arch {arch!r}")
+
+    lib_dir = wgpu_root / abi / "lib"
+    inc_dir = wgpu_root / "include"
+    if not (lib_dir / "libwgpu_native.so").is_file():
+        sys.exit(f"ERROR: libwgpu_native.so not found under {lib_dir}")
+
+    stage_inc = build_root / "wgpu_stage" / arch / "include"
+    webgpu_dir = stage_inc / "webgpu"
+    webgpu_dir.mkdir(parents=True, exist_ok=True)
+    for h in ("webgpu.h", "wgpu.h"):
+        src = inc_dir / h
+        dst = webgpu_dir / h
+        if not src.is_file():
+            sys.exit(f"ERROR: wgpu-native header not found: {src}")
+        if dst.is_symlink() or dst.exists():
+            dst.unlink()
+        dst.symlink_to(src)
+
+    version = "0"
+    installed_pc = lib_dir / "pkgconfig" / "wgpu-native.pc"
+    if installed_pc.is_file():
+        for line in installed_pc.read_text().splitlines():
+            if line.lower().startswith("version:"):
+                version = line.split(":", 1)[1].strip()
+                break
+
+    pc_dir = build_root / "wgpu_pc" / arch
+    pc_dir.mkdir(parents=True, exist_ok=True)
+    (pc_dir / "wgpu_native.pc").write_text(textwrap.dedent(f"""\
+        Name: wgpu_native
+        Description: wgpu-native (WebGPU) for the ThorVG wg engine
+        Version: {version}
+        Cflags: -I{stage_inc}
+        Libs: -L{lib_dir} -lwgpu_native
+        """))
+    return str(pc_dir), stage_inc, lib_dir
+
+
 def build_linux(root: Path, gpu: str) -> None:
     """Build thorvg for the native Linux architecture."""
     _ensure_tool("meson")
@@ -1234,7 +1305,7 @@ def build_android(root: Path, gpu: str, *, ndk: str = "",
     gen_cross_dir = build_root / "cross"
     gen_cross_dir.mkdir(parents=True, exist_ok=True)
 
-    def _generate_cross(template: Path, out: Path) -> None:
+    def _generate_cross(template: Path, out: Path, arch: str) -> None:
         content = template.read_text()
         content = content.replace("NDK", str(ndk_dir))
         content = content.replace("HOST_TAG", host_tag)
@@ -1257,15 +1328,54 @@ def build_android(root: Path, gpu: str, *, ndk: str = "",
         # libomp.so or libc++_shared.so at runtime.
         content = _inject_cross_list(content, "cpp_link_args", ["-static-openmp", "-static-libstdc++"])
         out.write_text(content)
+        # GPU only: the wg engine resolves wgpu_native through pkg-config, and
+        # a cross build reaches it neither through the build machine's search
+        # path nor without a pkg-config binary named in [binaries]. A CPU build
+        # has no such dependency, so neither injection happens for it.
+        if gpu:
+            pc_dir, stage_inc, wgpu_lib = _android_wgpu_pkgconfig_dir(build_root, arch)
+            _inject_pkg_config(out)
+            _inject_cross_pkg_config_path(out, pc_dir)
+            # pkg_config_libdir, not just pkg_config_path: without it the host's
+            # pkg-config still searches its own prefixes and the cross build
+            # resolves Homebrew's libpng/libturbojpeg, which meson then rewrites
+            # under sys_root into paths that do not exist. Restricting the
+            # search to the staged dir puts those loaders back on thorvg's
+            # built-in implementations, which is what a plain build already uses.
+            content = out.read_text()
+            if "pkg_config_libdir" not in content:
+                content = content.replace(
+                    "[properties]", f"[properties]\npkg_config_libdir = ['{pc_dir}']"
+                )
+                out.write_text(content)
+            # The include and link flags go in directly as well. meson applies
+            # sys_root to everything pkg-config reports, so the -I/-L it derives
+            # from the .pc point inside the NDK sysroot and resolve to nothing;
+            # the .pc still has to exist for dependency('wgpu_native') to
+            # succeed, but these are the flags that actually work.
+            content = out.read_text()
+            # The android templates carry cpp_link_args but no cpp_args, and
+            # _inject_cross_list only extends a key that already exists.
+            if "cpp_args" not in content:
+                content = content.replace(
+                    "[built-in options]", "[built-in options]\ncpp_args = []"
+                )
+            content = _inject_cross_list(content, "cpp_args", [f"-I{stage_inc}"])
+            content = _inject_cross_list(
+                content, "cpp_link_args", [f"-L{wgpu_lib}", "-lwgpu_native"]
+            )
+            out.write_text(content)
         print(f"  Generated cross file: {out}")
 
     _generate_cross(
         CROSS_DIR / "android_aarch64.txt",
         gen_cross_dir / "android_aarch64.txt",
+        "aarch64",
     )
     _generate_cross(
         CROSS_DIR / "android_x86_64.txt",
         gen_cross_dir / "android_x86_64.txt",
+        "x86_64",
     )
     print()
 

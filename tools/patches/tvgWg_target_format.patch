@@ -1,0 +1,23 @@
+--- a/src/renderer/gpu_engine/wg/tvgWgRenderer.cpp	2026-08-03 22:35:15
++++ b/src/renderer/gpu_engine/wg/tvgWgRenderer.cpp	2026-08-03 22:35:15
+@@ -413,6 +413,20 @@
+     }
+ 
+     if (w == 0 || h == 0) return false;
++
++    // Adopt the target's own format instead of assuming BGRA8Unorm. Every
++    // pipeline built below is created against mContext.format, so a target in
++    // any other format makes the final blit render pass format-incompatible.
++    // It matters on Android in particular: AHardwareBuffer has no BGRA format
++    // at all, so a zero-copy target there has to be RGBA8Unorm.
++    if (type != 0) {
++        WGPUTextureFormat targetFormat = wgpuTextureGetFormat((WGPUTexture)target);
++        if (targetFormat != WGPUTextureFormat_Undefined && targetFormat != mContext.format) {
++            // Pipelines are built from this, so a change means a full rebuild.
++            release();
++            mContext.format = targetFormat;
++        }
++    }
+ 
+     // device or instance was changed, need to recreate all instances
+     if ((mContext.device != device) || (mContext.instance != instance)) {
